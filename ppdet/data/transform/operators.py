@@ -1461,3 +1461,77 @@ class BboxXYXY2XYWH(BaseOperator):
         bbox[:, :2] = bbox[:, :2] + bbox[:, 2:4] / 2.
         sample['gt_bbox'] = bbox
         return sample
+
+
+@register_op
+class RandomVerticalFlipImage(BaseOperator):
+
+    def __init__(self, prob=0.5, is_normalized=False, is_mask_flip=False):
+        """
+        Args:
+            prob (float): the probability of flipping image
+            is_normalized (bool): whether the bbox scale to [0,1]
+            is_mask_flip (bool): whether flip the segmentation
+        """
+        super(RandomVerticalFlipImage, self).__init__()
+        self.prob = prob
+        self.is_normalized = is_normalized
+        self.is_mask_flip = is_mask_flip
+        if not (isinstance(self.prob, float) and
+                isinstance(self.is_normalized, bool) and
+                isinstance(self.is_mask_flip, bool)):
+            raise TypeError("{}: input type is invalid.".format(self))
+        assert not is_mask_flip, "mask flip not supported"
+
+
+    def __call__(self, sample, context=None):
+        """Filp the image and bounding box.
+        Operators:
+            1. Flip the image numpy.
+            2. Transform the bboxes' x coordinates.
+              (Must judge whether the coordinates are normalized!)
+            3. Transform the segmentations' x coordinates.
+              (Must judge whether the coordinates are normalized!)
+        Output:
+            sample: the image, bounding box and segmentation part
+                    in sample are flipped.
+        """
+
+        samples = sample
+        batch_input = True
+        if not isinstance(samples, Sequence):
+            batch_input = False
+            samples = [samples]
+        for sample in samples:
+            gt_bbox = sample['gt_bbox']
+            im = sample['image']
+            if not isinstance(im, np.ndarray):
+                raise TypeError("{}: image is not a numpy array.".format(self))
+            if len(im.shape) != 3:
+                raise ImageError("{}: image is not 3-dimensional.".format(self))
+            height, width, _ = im.shape
+            if np.random.uniform(0, 1) < self.prob:
+                im = im[::-1, :, :]
+                if gt_bbox.shape[0] == 0:
+                    return sample
+                oldy1 = gt_bbox[:, 1].copy()
+                oldy2 = gt_bbox[:, 3].copy()
+                if self.is_normalized:
+                    gt_bbox[:, 1] = 1 - oldy2
+                    gt_bbox[:, 3] = 1 - oldy1
+                else:
+                    gt_bbox[:, 1] = height - oldy2 - 1
+                    gt_bbox[:, 3] = height - oldy1 - 1
+                if gt_bbox.shape[0] != 0 and (
+                        gt_bbox[:, 3] < gt_bbox[:, 1]).all():
+                    m = "{}: invalid box, y2 should be greater than y1".format(
+                        self)
+                    raise BboxError(m)
+                sample['gt_bbox'] = gt_bbox
+                if self.is_mask_flip and len(sample['gt_poly']) != 0:
+                    sample['gt_poly'] = self.flip_segms(sample['gt_poly'],
+                                                        height, width)
+                sample['vflipped'] = True
+                sample['image'] = im
+        sample = samples if batch_input else samples[0]
+        return sample
