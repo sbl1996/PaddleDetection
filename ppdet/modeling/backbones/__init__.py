@@ -43,3 +43,6 @@ from .res2net import *
 from .hrnet import *
 from .hrfpn import *
 from .bfp import *
+
+from . import fpn2
+from .fpn2 import *

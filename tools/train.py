@@ -223,6 +223,16 @@ def main():
         tb_loss_step = 0
         tb_mAP_step = 0
 
+    if FLAGS.use_vdl:
+        from visualdl import LogWriter
+        vdl_writer = LogWriter(FLAGS.vdl_log_dir, sync_cycle=5)
+
+        with vdl_writer.mode("train"):
+            scalars = [vdl_writer.scalar(loss_name) for loss_name in train_keys]
+            mAP_scalar = vdl_writer.scalar("mAP")
+        vdl_loss_step = 0
+        vdl_mAP_step = 0
+
     for it in range(start_iter, cfg.max_iters):
         start_time = end_time
         end_time = time.time()
@@ -239,6 +249,13 @@ def main():
                 for loss_name, loss_value in stats.items():
                     tb_writer.add_scalar(loss_name, loss_value, tb_loss_step)
                 tb_loss_step += 1
+
+        if FLAGS.use_vdl:
+            if it % cfg.log_iter == 0:
+                for loss_name, scalar in zip(train_keys, scalars):
+                    loss_value = stats[loss_name]
+                    scalar.add_record(vdl_loss_step, loss_value)
+                vdl_loss_step += 1
 
         train_stats.update(stats)
         logs = train_stats.log()
@@ -269,6 +286,10 @@ def main():
                 if FLAGS.use_tb:
                     tb_writer.add_scalar("mAP", box_ap_stats[0], tb_mAP_step)
                     tb_mAP_step += 1
+
+                if FLAGS.use_vdl:
+                    mAP_scalar.add_record(vdl_mAP_step, box_ap_stats[0])
+                    vdl_mAP_step += 1
 
                 if box_ap_stats[0] > best_box_ap_list[0]:
                     best_box_ap_list[0] = box_ap_stats[0]
@@ -319,5 +340,16 @@ if __name__ == '__main__':
         type=str,
         default="tb_log_dir/scalar",
         help='Tensorboard logging directory for scalar.')
+    parser.add_argument(
+        "--use_vdl",
+        type=bool,
+        default=False,
+        help="whether to record the data to VisualDL.")
+    parser.add_argument(
+        '--vdl_log_dir',
+        type=str,
+        default="vdl_log_dir",
+        help='VisualDL logging directory for scalar.')
+
     FLAGS = parser.parse_args()
     main()
