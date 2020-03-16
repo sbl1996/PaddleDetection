@@ -18,6 +18,7 @@ from __future__ import print_function
 
 import os
 import time
+import math
 import numpy as np
 import datetime
 from collections import deque
@@ -47,6 +48,7 @@ from ppdet.utils.eval_utils import parse_fetches, eval_run, eval_results
 from ppdet.utils.stats import TrainingStats
 from ppdet.utils.cli import ArgsParser
 from ppdet.utils.check import check_gpu, check_version
+from ppdet.optimizer import CosineDecayWithWarmup
 import ppdet.utils.checkpoint as checkpoint
 
 import logging
@@ -95,6 +97,9 @@ def main():
     place = fluid.CUDAPlace(device_id) if cfg.use_gpu else fluid.CPUPlace()
     exe = fluid.Executor(place)
 
+    scheduler = cfg.LearningRate['schedulers'][0]
+    if isinstance(scheduler, CosineDecayWithWarmup) and scheduler.max_iters is None:
+        scheduler.max_iters = cfg.max_iters
     lr_builder = create('LearningRate')
     optim_builder = create('OptimizerBuilder')
 
